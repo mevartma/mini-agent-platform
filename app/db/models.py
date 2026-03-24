@@ -1,10 +1,13 @@
 """SQLAlchemy ORM models for the Mini Agent Platform."""
 
+import enum
 from datetime import datetime
 from typing import Optional
 
 from sqlalchemy import (
+    Boolean,
     DateTime,
+    Enum,
     ForeignKey,
     Integer,
     String,
@@ -15,6 +18,89 @@ from sqlalchemy import (
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base, TimestampMixin, new_uuid
+
+
+# ── Tenant ────────────────────────────────────────────────────────────────────
+
+class Tenant(Base, TimestampMixin):
+    __tablename__ = "tenants"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_uuid)
+    name: Mapped[str] = mapped_column(String(255), nullable=False)
+    slug: Mapped[str] = mapped_column(String(64), unique=True, nullable=False, index=True)
+    is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+
+    users: Mapped[list["User"]] = relationship(
+        back_populates="tenant", cascade="all, delete-orphan"
+    )
+    api_keys: Mapped[list["ApiKey"]] = relationship(
+        back_populates="tenant", cascade="all, delete-orphan"
+    )
+
+    def __repr__(self) -> str:
+        return f"<Tenant slug={self.slug}>"
+
+
+# ── User ──────────────────────────────────────────────────────────────────────
+
+class UserRole(str, enum.Enum):
+    admin = "admin"
+    operator = "operator"
+    viewer = "viewer"
+
+
+class User(Base, TimestampMixin):
+    __tablename__ = "users"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_uuid)
+    tenant_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    email: Mapped[str] = mapped_column(String(255), nullable=False)
+    password_hash: Mapped[str] = mapped_column(String(255), nullable=False)
+    role: Mapped[UserRole] = mapped_column(
+        Enum(UserRole, name="userrole"), nullable=False, default=UserRole.operator
+    )
+    is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+
+    tenant: Mapped["Tenant"] = relationship(back_populates="users")
+    api_keys: Mapped[list["ApiKey"]] = relationship(
+        back_populates="user", cascade="all, delete-orphan"
+    )
+
+    __table_args__ = (
+        UniqueConstraint("tenant_id", "email", name="uq_users_tenant_email"),
+    )
+
+    def __repr__(self) -> str:
+        return f"<User email={self.email} role={self.role}>"
+
+
+# ── ApiKey ────────────────────────────────────────────────────────────────────
+
+class ApiKey(Base, TimestampMixin):
+    __tablename__ = "api_keys"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_uuid)
+    tenant_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    user_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("users.id", ondelete="CASCADE"), nullable=False
+    )
+    key_prefix: Mapped[str] = mapped_column(String(8), nullable=False)
+    key_hash: Mapped[str] = mapped_column(String(255), nullable=False)
+    label: Mapped[str] = mapped_column(String(255), nullable=False, default="Default")
+    is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    expires_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+
+    tenant: Mapped["Tenant"] = relationship(back_populates="api_keys")
+    user: Mapped["User"] = relationship(back_populates="api_keys")
+
+    def __repr__(self) -> str:
+        return f"<ApiKey prefix={self.key_prefix} tenant={self.tenant_id}>"
 
 
 class Tool(Base, TimestampMixin):
@@ -139,3 +225,48 @@ class ExecutionStep(Base):
     )
 
     execution: Mapped["Execution"] = relationship(back_populates="steps")
+
+
+# ── Chat ──────────────────────────────────────────────────────────────────────
+
+class ChatSession(Base, TimestampMixin):
+    """A persistent chat conversation within a tenant."""
+
+    __tablename__ = "chat_sessions"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_uuid)
+    tenant_id: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+    name: Mapped[str] = mapped_column(String(255), nullable=False, default="New Chat")
+
+    messages: Mapped[list["ChatMessage"]] = relationship(
+        back_populates="session", cascade="all, delete-orphan", order_by="ChatMessage.created_at"
+    )
+
+    def __repr__(self) -> str:
+        return f"<ChatSession id={self.id} tenant={self.tenant_id}>"
+
+
+class ChatMessage(Base):
+    """One message in a chat session."""
+
+    __tablename__ = "chat_messages"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_uuid)
+    session_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("chat_sessions.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    tenant_id: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+    role: Mapped[str] = mapped_column(String(16), nullable=False)  # user | agent
+    content: Mapped[str] = mapped_column(Text, nullable=False)
+    agent_name: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    execution_id: Mapped[Optional[str]] = mapped_column(
+        String(36), ForeignKey("executions.id", ondelete="SET NULL"), nullable=True
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+
+    session: Mapped["ChatSession"] = relationship(back_populates="messages")
+
+    def __repr__(self) -> str:
+        return f"<ChatMessage id={self.id} role={self.role}>"
