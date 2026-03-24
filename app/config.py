@@ -7,12 +7,9 @@ class Settings(BaseSettings):
     database_url: str = (
         "postgresql+asyncpg://postgres:postgres@localhost:5432/mini_agent_platform"
     )
-    # Comma-separated pairs: "api-key:tenant-id,api-key2:tenant-id2"
-    tenant_keys: str = (
-        "key-tenant-alpha:tenant-alpha,"
-        "key-tenant-beta:tenant-beta,"
-        "key-tenant-gamma:tenant-gamma"
-    )
+    redis_url: str = "redis://localhost:6379/0"
+    jwt_secret: str = "change-me-in-production"
+    jwt_expire_minutes: int = 60
 
 
 settings = Settings()

@@ -1,12 +1,15 @@
 """Agent CRUD service — all operations are scoped to a tenant_id."""
 
+from redis.asyncio import Redis
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
+from app.agents.schemas import AgentCreate, AgentResponse, AgentUpdate
+from app.cache.keys import agent_key
+from app.cache.ops import get_cached, invalidate, set_cached
 from app.db.base import new_uuid
 from app.db.models import Agent, AgentTool, Tool
-from app.agents.schemas import AgentCreate, AgentUpdate
 
 
 class AgentNotFoundError(Exception):
@@ -102,12 +105,29 @@ async def list_agents(
     return list(result.scalars().unique().all())
 
 
-async def get_agent(db: AsyncSession, tenant_id: str, agent_id: str) -> Agent:
-    return await _load_agent(db, tenant_id, agent_id)
+async def get_agent(
+    db: AsyncSession,
+    tenant_id: str,
+    agent_id: str,
+    redis: Redis | None = None,
+) -> Agent | dict:
+    if redis is not None:
+        cached = await get_cached(redis, agent_key(tenant_id, agent_id))
+        if cached is not None:
+            return cached
+    agent = await _load_agent(db, tenant_id, agent_id)
+    if redis is not None:
+        data = AgentResponse.model_validate(agent).model_dump(mode="json")
+        await set_cached(redis, agent_key(tenant_id, agent_id), data)
+    return agent
 
 
 async def update_agent(
-    db: AsyncSession, tenant_id: str, agent_id: str, data: AgentUpdate
+    db: AsyncSession,
+    tenant_id: str,
+    agent_id: str,
+    data: AgentUpdate,
+    redis: Redis | None = None,
 ) -> Agent:
     agent = await _load_agent(db, tenant_id, agent_id)
 
@@ -139,10 +159,19 @@ async def update_agent(
             db.add(AgentTool(agent_id=agent.id, tool_id=tool.id))
 
     await db.commit()
+    if redis is not None:
+        await invalidate(redis, agent_key(tenant_id, agent_id))
     return await _load_agent(db, tenant_id, agent.id)
 
 
-async def delete_agent(db: AsyncSession, tenant_id: str, agent_id: str) -> None:
+async def delete_agent(
+    db: AsyncSession,
+    tenant_id: str,
+    agent_id: str,
+    redis: Redis | None = None,
+) -> None:
     agent = await _load_agent(db, tenant_id, agent_id)
     await db.delete(agent)
     await db.commit()
+    if redis is not None:
+        await invalidate(redis, agent_key(tenant_id, agent_id))
