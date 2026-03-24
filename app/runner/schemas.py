@@ -1,3 +1,4 @@
+import json
 from datetime import datetime
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -36,3 +37,26 @@ class RunResponse(BaseModel):
     status: str
     steps: list[ExecutionStepResponse]
     created_at: datetime
+
+
+# ── SSE event models ─────────────────────────────────────────────────────────
+
+class StreamStepEvent(BaseModel):
+    step_number: int
+    step_type: str
+    tool_name: str | None = None
+    tool_input: str | None = None
+    tool_output: str | None = None
+    llm_output: str | None = None
+
+
+class StreamFinalEvent(BaseModel):
+    execution_id: str
+    status: str
+    final_response: str | None
+    total_steps: int
+
+
+def sse_encode(event: str, data: BaseModel) -> str:
+    """Format a Server-Sent Event frame."""
+    return f"event: {event}\ndata: {json.dumps(data.model_dump())}\n\n"
