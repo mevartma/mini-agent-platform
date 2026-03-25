@@ -6,6 +6,7 @@ interface LiveSteps {
   steps: StreamStepEvent[];
   streaming: boolean;
   finalResponse: string | null;
+  error: string | null;
 }
 
 interface Props {
@@ -60,6 +61,7 @@ export default function ChatMessageBubble({ message, liveSteps }: Props) {
   const steps = liveSteps?.steps ?? [];
   const streaming = liveSteps?.streaming ?? false;
   const finalResponse = liveSteps?.finalResponse ?? message.content;
+  const error = liveSteps?.error ?? null;
 
   return (
     <div className="flex justify-start">
@@ -77,21 +79,27 @@ export default function ChatMessageBubble({ message, liveSteps }: Props) {
           <span className="text-xs text-gray-400 ml-auto">{formatTime(message.created_at)}</span>
         </div>
 
-        <div className="bg-white border border-gray-200 rounded-2xl rounded-tl-sm px-4 py-3 space-y-2">
-          {steps.length > 0 && (
-            <div className="space-y-1.5">
-              {steps.map((s) => (
-                <StepBadge key={`${s.step_number}-${s.step_type}`} step={s} />
-              ))}
-            </div>
-          )}
+        <div className={`rounded-2xl rounded-tl-sm px-4 py-3 space-y-2 ${error ? "bg-red-50 border border-red-200" : "bg-white border border-gray-200"}`}>
+          {error ? (
+            <p className="text-sm text-red-600">{error}</p>
+          ) : (
+            <>
+              {steps.length > 0 && (
+                <div className="space-y-1.5">
+                  {steps.map((s) => (
+                    <StepBadge key={`${s.step_number}-${s.step_type}`} step={s} />
+                  ))}
+                </div>
+              )}
 
-          {!streaming && finalResponse && (
-            <p className="text-sm text-gray-800 whitespace-pre-wrap">{finalResponse}</p>
-          )}
+              {!streaming && finalResponse && (
+                <p className="text-sm text-gray-800 whitespace-pre-wrap">{finalResponse}</p>
+              )}
 
-          {!streaming && !finalResponse && steps.length === 0 && (
-            <p className="text-sm text-gray-800 whitespace-pre-wrap">{message.content}</p>
+              {!streaming && !finalResponse && !error && steps.length === 0 && (
+                <p className="text-sm text-gray-800 whitespace-pre-wrap">{message.content}</p>
+              )}
+            </>
           )}
         </div>
       </div>

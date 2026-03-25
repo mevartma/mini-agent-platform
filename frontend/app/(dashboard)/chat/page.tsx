@@ -16,6 +16,7 @@ interface LiveState {
     steps: StreamStepEvent[];
     streaming: boolean;
     finalResponse: string | null;
+    error: string | null;
   };
 }
 
@@ -137,7 +138,7 @@ export default function ChatPage() {
     setMessages((prev) => [...prev, placeholder]);
     setLiveState((prev) => ({
       ...prev,
-      [tempId]: { steps: [], streaming: true, finalResponse: null },
+      [tempId]: { steps: [], streaming: true, finalResponse: null, error: null },
     }));
 
     try {
@@ -148,9 +149,14 @@ export default function ChatPage() {
       });
 
       if (!res.ok || !res.body) {
+        let detail = "Request failed.";
+        try {
+          const errData = await res.json();
+          detail = errData.detail ?? detail;
+        } catch { /* ignore */ }
         setLiveState((prev) => ({
           ...prev,
-          [tempId]: { ...prev[tempId], streaming: false },
+          [tempId]: { ...prev[tempId], streaming: false, error: detail },
         }));
         return;
       }
@@ -202,6 +208,16 @@ export default function ChatPage() {
                   finalResponse: finalText,
                 },
               }));
+            } else if (eventType === "error") {
+              setLiveState((prev) => ({
+                ...prev,
+                [tempId]: {
+                  ...prev[tempId],
+                  streaming: false,
+                  error: payload.detail ?? "An error occurred.",
+                },
+              }));
+              return;
             }
           } catch {
             // malformed SSE frame — skip
@@ -209,7 +225,8 @@ export default function ChatPage() {
         }
       }
 
-      // 4. Persist agent message to DB
+      // 4. Persist agent message to DB (skip if no response was produced)
+      if (!finalText) return;
       const saved = await postMessage(sessionId, {
         role: "agent",
         content: finalText ?? "(no response)",
