@@ -13,9 +13,9 @@ import re
 _PATTERNS: list[re.Pattern[str]] = [
     re.compile(p, re.IGNORECASE)
     for p in [
-        # Classic override attempts
-        r"ignore\s+(all\s+|previous\s+|above\s+|prior\s+)?instructions?",
-        r"disregard\s+(all\s+|previous\s+|above\s+|prior\s+)?instructions?",
+        # Classic override attempts — allow any number of modifier words before "instructions"
+        r"ignore\s+(\w+\s+){0,4}instructions?",
+        r"disregard\s+(\w+\s+){0,4}instructions?",
         r"forget\s+(everything|all|your\s+instructions?|what\s+you\s+were\s+told)",
         # Role / persona hijacking
         r"\byou\s+are\s+now\b",
@@ -27,6 +27,7 @@ _PATTERNS: list[re.Pattern[str]] = [
         r"\breveal\s+(your\s+|the\s+)?(system\s+)?(prompt|instructions?|context)\b",
         r"\bprint\s+(your\s+)?(system\s+)?prompt\b",
         r"\bshow\s+(me\s+)?(your\s+)?(system\s+)?prompt\b",
+        r"\btell\s+me\s+(your\s+)?(system\s+)?(prompt|instructions?|context)\b",
         r"\brepeat\s+(your\s+)?(system\s+)?instructions?\b",
         # Jailbreak / bypass keywords
         r"\bjailbreak\b",
